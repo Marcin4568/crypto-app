@@ -13,6 +13,21 @@ CREATE TABLE IF NOT EXISTS coins (
     description TEXT,
     created_at  TIMESTAMP      DEFAULT CURRENT_TIMESTAMP
 );
+--tabel coin mappings
+CREATE TABLE coin_mappings (
+                               id INT AUTO_INCREMENT PRIMARY KEY,
+                               symbol VARCHAR(10) NOT NULL UNIQUE,
+                               api_id VARCHAR(50) NOT NULL
+);
+
+INSERT INTO coin_mappings (symbol, api_id) VALUES
+                                               ('BTC', 'bitcoin'),
+                                               ('ETH', 'ethereum'),
+                                               ('SOL', 'solana'),
+                                               ('ADA', 'cardano'),
+                                               ('XRP', 'ripple'),
+                                               ('DOGE', 'dogecoin'),
+                                               ('DOT', 'polkadot');
 
 -- Tabel 2: portfolios
 CREATE TABLE IF NOT EXISTS portfolios (

@@ -1,28 +1,129 @@
 <?php
 
 require_once __DIR__ . '/../repositories/CoinRepository.php';
+require_once __DIR__ . '/CryptoApiService.php';
 
-/**
- * CoinService
- * 
- * Bevat de businesslogica voor coins.
- * Valideert data voordat het naar de repository gaat.
- * De frontend praat altijd met de Service, nooit direct met de Repository.
- */
 class CoinService
 {
     private CoinRepository $repository;
+    private CryptoApiService $cryptoApi;
 
     public function __construct()
     {
         $this->repository = new CoinRepository();
+        $this->cryptoApi  = new CryptoApiService();
+    }
+
+    // -------------------------------------------------------
+    // CoinGecko mapping
+    // -------------------------------------------------------
+
+    private function getCoinMap(): array
+    {
+        return [
+            'BTC'  => 'bitcoin',
+            'ETH'  => 'ethereum',
+            'SOL'  => 'solana',
+            'ADA'  => 'cardano',
+            'XRP'  => 'ripple',
+            'DOGE' => 'dogecoin',
+            'DOT'  => 'polkadot',
+        ];
+    }
+
+    // -------------------------------------------------------
+    // PORTFOLIO VALUE (JOIN + API)
+    // -------------------------------------------------------
+
+    public function getPortfolioValue(int $portfolioId): array
+    {
+        $rows = $this->repository->getCoinsWithPortfolioData($portfolioId);
+
+        $map = $this->getCoinMap();
+        $ids = [];
+
+        foreach ($rows as $row) {
+            $symbol = strtoupper($row['symbol']);
+
+            if (isset($map[$symbol])) {
+                $ids[] = $map[$symbol];
+            }
+        }
+
+        $prices = $this->cryptoApi->getPrices($ids) ?? [];
+
+        $result = [];
+        $totalValue = 0;
+
+        foreach ($rows as $row) {
+            $symbol = strtoupper($row['symbol']);
+            $id = $map[$symbol] ?? null;
+
+            $price = $prices[$id]['eur'] ?? 0;
+            $amount = $row['amount'];
+
+            $value = $price * $amount;
+            $totalValue += $value;
+
+            $result[] = [
+                'name'   => $row['name'],
+                'symbol' => $symbol,
+                'amount' => $amount,
+                'price'  => $price,
+                'value'  => $value
+            ];
+        }
+
+        return [
+            'coins' => $result,
+            'total' => $totalValue
+        ];
+    }
+
+    // -------------------------------------------------------
+    // ALL COINS WITH LIVE PRICES
+    // -------------------------------------------------------
+
+    public function getCoinsWithPrices(): array
+    {
+        $coins = $this->repository->getAll();
+        $map   = $this->getCoinMap();
+
+        $ids = [];
+
+        foreach ($coins as $coin) {
+            $symbol = strtoupper($coin->getSymbol());
+
+            if (isset($map[$symbol])) {
+                $ids[] = $map[$symbol];
+            }
+        }
+
+        $prices = $this->cryptoApi->getPrices($ids) ?? [];
+
+        $result = [];
+
+        foreach ($coins as $coin) {
+            $symbol = strtoupper($coin->getSymbol());
+            $id = $map[$symbol] ?? null;
+
+            $price = $prices[$id]['eur'] ?? null;
+            $change = $prices[$id]['eur_24h_change'] ?? null;
+
+            $result[] = [
+                'coin'   => $coin,
+                'price'  => $price,
+                'change' => $change
+            ];
+        }
+
+        return $result;
     }
 
     // -------------------------------------------------------
     // READ
     // -------------------------------------------------------
 
-    /** @return Coin[] */
     public function getAllCoins(): array
     {
         return $this->repository->getAll();
@@ -33,69 +134,63 @@ class CoinService
         return $this->repository->getById($id);
     }
 
-    /** @return Coin[] */
     public function searchCoins(string $query): array
     {
-        if (strlen(trim($query)) < 1) {
+        $query = trim($query);
+
+        if ($query === '') {
             return $this->repository->getAll();
         }
-        return $this->repository->search(trim($query));
+
+        return $this->repository->search($query);
     }
 
     // -------------------------------------------------------
     // CREATE
     // -------------------------------------------------------
 
-    /**
-     * Valideer en maak een nieuwe coin aan.
-     * Geeft een array terug: ['success' => bool, 'message' => string, 'id' => int|null]
-     */
     public function createCoin(string $name, string $symbol, string $description): array
     {
-        // Validatie
         $errors = $this->validate($name, $symbol);
+
         if (!empty($errors)) {
             return ['success' => false, 'message' => implode(' ', $errors)];
         }
 
-        // Controleer of symbool al bestaat
         if ($this->repository->symbolExists($symbol)) {
-            return ['success' => false, 'message' => "Symbool '{$symbol}' bestaat al."];
+            return ['success' => false, 'message' => 'Symbool bestaat al.'];
         }
 
-        $id = $this->repository->create(trim($name), trim($symbol), trim($description));
-        return ['success' => true, 'message' => "Coin '{$name}' succesvol toegevoegd!", 'id' => $id];
+        $id = $this->repository->create($name, $symbol, $description);
+
+        return ['success' => true, 'message' => 'Coin toegevoegd!', 'id' => $id];
     }
 
     // -------------------------------------------------------
     // UPDATE
     // -------------------------------------------------------
 
-    /**
-     * Valideer en update een bestaande coin.
-     */
     public function updateCoin(int $id, string $name, string $symbol, string $description): array
     {
-        // Controleer of coin bestaat
         if (!$this->repository->getById($id)) {
             return ['success' => false, 'message' => 'Coin niet gevonden.'];
         }
 
-        // Validatie
         $errors = $this->validate($name, $symbol);
+
         if (!empty($errors)) {
             return ['success' => false, 'message' => implode(' ', $errors)];
         }
 
-        // Controleer of symbool al bestaat (maar niet bij zichzelf)
         if ($this->repository->symbolExists($symbol, $id)) {
-            return ['success' => false, 'message' => "Symbool '{$symbol}' wordt al gebruikt."];
+            return ['success' => false, 'message' => 'Symbool bestaat al.'];
         }
 
-        $ok = $this->repository->update($id, trim($name), trim($symbol), trim($description));
+        $ok = $this->repository->update($id, $name, $symbol, $description);
+
         return $ok
-            ? ['success' => true,  'message' => "Coin '{$name}' succesvol bijgewerkt!"]
-            : ['success' => false, 'message' => 'Er ging iets mis bij het bijwerken.'];
+            ? ['success' => true, 'message' => 'Coin bijgewerkt!']
+            : ['success' => false, 'message' => 'Fout bij updaten'];
     }
 
     // -------------------------------------------------------
@@ -105,18 +200,20 @@ class CoinService
     public function deleteCoin(int $id): array
     {
         $coin = $this->repository->getById($id);
+
         if (!$coin) {
             return ['success' => false, 'message' => 'Coin niet gevonden.'];
         }
 
         $ok = $this->repository->delete($id);
+
         return $ok
-            ? ['success' => true,  'message' => "Coin '{$coin->getName()}' verwijderd."]
-            : ['success' => false, 'message' => 'Er ging iets mis bij het verwijderen.'];
+            ? ['success' => true, 'message' => 'Coin verwijderd.']
+            : ['success' => false, 'message' => 'Fout bij verwijderen'];
     }
 
     // -------------------------------------------------------
-    // VALIDATIE (privé hulpfunctie)
+    // VALIDATION
     // -------------------------------------------------------
 
     private function validate(string $name, string $symbol): array
@@ -124,15 +221,22 @@ class CoinService
         $errors = [];
 
         if (strlen(trim($name)) < 2) {
-            $errors[] = 'Naam moet minimaal 2 tekens bevatten.';
+            $errors[] = 'Naam te kort.';
         }
-        if (strlen(trim($name)) > 100) {
-            $errors[] = 'Naam mag maximaal 100 tekens bevatten.';
-        }
-        if (!preg_match('/^[A-Za-z]{1,10}$/', trim($symbol))) {
-            $errors[] = 'Symbool mag alleen letters bevatten (1–10 tekens), bijv. BTC.';
+
+        if (!preg_match('/^[A-Za-z]{1,10}$/', $symbol)) {
+            $errors[] = 'Ongeldig symbool.';
         }
 
         return $errors;
+    }
+
+    // -------------------------------------------------------
+    // PORTFOLIO COINS (JOIN RAW DATA)
+    // -------------------------------------------------------
+
+    public function getPortfolioCoins(int $portfolioId): array
+    {
+        return $this->repository->getCoinsWithPortfolioData($portfolioId);
     }
 }

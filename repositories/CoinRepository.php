@@ -46,6 +46,20 @@ class CoinRepository
         return $row ? Coin::fromArray($row) : null;
     }
 
+    public function getCoinMap(): array
+    {
+        $stmt = $this->db->query("SELECT symbol, api_id FROM coin_mappings");
+        $rows = $stmt->fetchAll();
+
+        $map = [];
+
+        foreach ($rows as $row) {
+            $map[strtoupper($row['symbol'])] = $row['api_id'];
+        }
+
+        return $map;
+    }
+
     /**
      * Zoek coins op naam of symbool.
      * @return Coin[]
@@ -59,6 +73,27 @@ class CoinRepository
         $stmt->execute([':q1' => $like, ':q2' => $like]);
 
         return array_map(fn($row) => Coin::fromArray($row), $stmt->fetchAll());
+    }
+    public function getCoinsWithPortfolioData(int $portfolioId): array
+    {
+        $stmt = $this->db->prepare("
+        SELECT 
+            c.id,
+            c.name,
+            c.symbol,
+            c.description,
+            pc.amount,
+            pc.buy_price
+        FROM coins c
+        JOIN portfolio_coins pc ON c.id = pc.coin_id
+        WHERE pc.portfolio_id = :portfolio_id
+    ");
+
+        $stmt->execute([
+            ':portfolio_id' => $portfolioId
+        ]);
+
+        return $stmt->fetchAll();
     }
 
     // -------------------------------------------------------
