@@ -1,62 +1,107 @@
 <?php
 
 // =============================================
-// Autoload
+// pagina's verbinden
 // =============================================
+
 require_once __DIR__ . '/../config/Database.php';
+
 require_once __DIR__ . '/../models/Coin.php';
+
 require_once __DIR__ . '/../repositories/CoinRepository.php';
+
 require_once __DIR__ . '/../services/CoinService.php';
 
-$service = new CoinService();
+
+$service = new CoinService(); //maakt het mogelijk om CRUD te gebruiken
+
 
 // =============================================
-// Controller
+   //beslist wat er moet gebeuren
 // =============================================
-$feedback = null;
 
+$feedback = null; // feedback
+
+
+// POST zorgt ervoor dat wat je hebt ingevuld naar PHP wordt gestuurd,
+// zodat PHP daarmee CRUD-acties kan uitvoeren
 $action = $_POST['action'] ?? $_GET['action'] ?? '';
-$id     = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+
+// ID uit URL (bijv. ?id=3), anders 0
+$id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+
+
+// =============================================
+// 3. CRUD LOGICA (wat moet er gebeuren?)
+// =============================================
 
 switch ($action) {
 
+    // ---------------- CREATE (toevoegen) ----------------
     case 'create':
+
+        // Maak nieuwe coin via service
         $result = $service->createCoin(
-                $_POST['name'] ?? '',
-                $_POST['symbol'] ?? '',
-                $_POST['description'] ?? ''
+                $_POST['name'] ?? '',        // naam input
+                $_POST['symbol'] ?? '',      // symbool input
+                $_POST['description'] ?? ''   // beschrijving input
         );
+
+        // resultaat (success/error + message) opslaan
         $feedback = $result;
         break;
 
+
+    // ---------------- UPDATE (aanpassen) ----------------
     case 'update':
+
+        // Coin updaten met nieuwe data
         $result = $service->updateCoin(
-                (int)($_POST['id'] ?? 0),
+                (int)($_POST['id'] ?? 0),     // welke coin
                 $_POST['name'] ?? '',
                 $_POST['symbol'] ?? '',
                 $_POST['description'] ?? ''
         );
+
+        // feedback tonen op scherm
         $feedback = $result;
         break;
 
+
+    // ---------------- DELETE (verwijderen) ----------------
     case 'delete':
+
+        // Coin verwijderen op basis van ID
         $result = $service->deleteCoin($id);
+
+        // feedback tonen
         $feedback = $result;
         break;
 }
 
+
 // =============================================
-// DATA
+// 4. DATA OPHALEN (voor de pagina)
 // =============================================
+
+// Zoekterm uit zoekveld (nog niet echt gebruikt in jouw snippet)
 $searchQuery = $_GET['search'] ?? '';
 
+// Alle coins + prijzen ophalen
 $data = $service->getCoinsWithPrices();
 
+
+// Als gebruiker op "edit" klikt → 1 coin ophalen
 $editCoin = ($action === 'edit' && $id)
         ? $service->getCoinById($id)
         : null;
 
 ?>
+
+<!-- =============================================
+     5. HTML (wat de gebruiker ziet)
+============================================= -->
+
 <!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -73,13 +118,20 @@ $editCoin = ($action === 'edit' && $id)
 
 <div class="container">
 
+
+    <!-- =============================================
+         FEEDBACK BERICHT (success / error)
+    ============================================= -->
     <?php if ($feedback): ?>
         <div class="alert alert-<?= $feedback['success'] ? 'success' : 'error' ?>">
             <?= htmlspecialchars($feedback['message']) ?>
         </div>
     <?php endif; ?>
 
-    <!-- ================= STATS ================= -->
+
+    <!-- =============================================
+         STATISTIEKEN (aantal coins)
+    ============================================= -->
     <div class="stats">
         <div class="stat">
             <div class="stat-label">Totaal coins</div>
@@ -87,20 +139,30 @@ $editCoin = ($action === 'edit' && $id)
         </div>
     </div>
 
+
     <div class="grid">
 
-        <!-- ================= FORM ================= -->
+        <!-- =============================================
+             FORMULIER (create of update)
+        ============================================= -->
         <div>
             <div class="panel">
 
+
+                <!-- EDIT MODE (bestaande coin aanpassen) -->
                 <?php if ($editCoin): ?>
 
                     <div class="panel-title">Coin aanpassen</div>
 
                     <form method="POST">
+
+                        <!-- update actie -->
                         <input type="hidden" name="action" value="update">
+
+                        <!-- welke coin -->
                         <input type="hidden" name="id" value="<?= $editCoin->getId() ?>">
 
+                        <!-- ingevulde velden -->
                         <input type="text" name="name" value="<?= htmlspecialchars($editCoin->getName()) ?>" required>
                         <input type="text" name="symbol" value="<?= htmlspecialchars($editCoin->getSymbol()) ?>" required>
                         <textarea name="description"><?= htmlspecialchars($editCoin->getDescription()) ?></textarea>
@@ -109,13 +171,18 @@ $editCoin = ($action === 'edit' && $id)
                         <a href="index.php">Annuleren</a>
                     </form>
 
+
+                    <!-- CREATE MODE (nieuwe coin toevoegen) -->
                 <?php else: ?>
 
                     <div class="panel-title">Coin toevoegen</div>
 
                     <form method="POST">
+
+                        <!-- create actie -->
                         <input type="hidden" name="action" value="create">
 
+                        <!-- lege input velden -->
                         <input type="text" name="name" placeholder="Bitcoin" required>
                         <input type="text" name="symbol" placeholder="BTC" required>
                         <textarea name="description"></textarea>
@@ -128,16 +195,21 @@ $editCoin = ($action === 'edit' && $id)
             </div>
         </div>
 
-        <!-- ================= TABLE ================= -->
+
+        <!-- =============================================
+             TABEL (alle coins tonen)
+        ============================================= -->
         <div>
             <div class="panel">
 
                 <div class="panel-title">Alle coins</div>
 
+                <!-- zoekfunctie -->
                 <form method="GET">
                     <input type="text" name="search" placeholder="Zoek..." value="<?= htmlspecialchars($searchQuery) ?>">
                     <button type="submit">Zoek</button>
                 </form>
+
 
                 <table>
                     <thead>
@@ -153,39 +225,50 @@ $editCoin = ($action === 'edit' && $id)
                     </thead>
 
                     <tbody>
+
+                    <!-- loop door alle coins -->
                     <?php foreach ($data as $row):
                         $coin = $row['coin'];
                         ?>
                         <tr>
+
+                            <!-- data tonen -->
                             <td><?= $coin->getId() ?></td>
-
                             <td><?= htmlspecialchars($coin->getName()) ?></td>
-
                             <td><?= htmlspecialchars($coin->getSymbol()) ?></td>
-
                             <td><?= htmlspecialchars($coin->getDescription()) ?></td>
 
+                            <!-- prijs -->
                             <td>
                                 <?= $row['price'] !== null
                                         ? '€' . number_format($row['price'], 2, ',', '.')
                                         : '-' ?>
                             </td>
 
+                            <!-- 24h verandering -->
                             <td>
                                 <?php if ($row['change'] !== null): ?>
                                     <span style="color:<?= $row['change'] >= 0 ? 'green' : 'red' ?>">
-                    <?= number_format($row['change'], 2) ?>%
-                </span>
+                                        <?= number_format($row['change'], 2) ?>%
+                                    </span>
                                 <?php else: ?>
                                     -
                                 <?php endif; ?>
                             </td>
 
+                            <!-- acties -->
                             <td class="actions">
+
+                                <!-- edit knop -->
                                 <a href="index.php?action=edit&id=<?= $coin->getId() ?>">✏️</a>
+
+                                <!-- delete knop -->
                                 <a href="index.php?action=delete&id=<?= $coin->getId() ?>"
                                    onclick="return confirm('Verwijderen?')">🗑️</a>
+
                             </td>
+
                         </tr>
                     <?php endforeach; ?>
+
                     </tbody>
